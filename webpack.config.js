@@ -35,6 +35,10 @@ module.exports = env => {
           from: "./src/options/",
         },
         {
+          from: "./src/_locales/",
+          to: "_locales",
+        },
+        {
           from: "./src/assets/",
         },
       ]),
