@@ -8,35 +8,94 @@ const STATS_API_ID_BY_YEAR = {
   2021: "85039NED",
 };
 
-export async function fetchNeighbourhoodMeta(zipCode) {
-  const parameters = {
-    q: zipCode,
-    fq: "type:adres",
-    rows: 1,
-  };
+function dbg(...args) {
+  // Background/service worker console
+  try {
+    console.log("[FundaNeighbourhoods][bg][api]", ...args);
+  } catch (_) {}
+}
 
-  const urlParametersString = getParametersString(parameters);
+export async function fetchNeighbourhoodMeta(zipCode, addressQuery) {
+  // Try a targeted postcode search first, then fall back to a generic search
+  const attempts = [
+    ...(addressQuery
+      ? [{ q: addressQuery, fq: `type:adres`, rows: 10, note: "address+postcode" }]
+      : []),
+    { q: zipCode, fq: `type:adres AND postcode:${zipCode}`, rows: 5, note: "adres+postcode" },
+    { q: zipCode, fq: `postcode:${zipCode}`, rows: 5, note: "postcode-only" },
+    { q: zipCode, fq: "type:adres", rows: 5, note: "adres-generic" },
+  ];
 
   try {
-    const response = await fetch(
-      `https://geodata.nationaalgeoregister.nl/locatieserver/v3/free?${urlParametersString}`
-    );
+    const baseUrls = [
+      "https://geodata.nationaalgeoregister.nl/locatieserver/v3/free",
+      "https://api.pdok.nl/bzk/locatieserver/v3/free",
+      "https://api.pdok.nl/bzk/locatieserver/search/v3/free",
+    ];
 
-    const responseJson = await response.json();
+    for (const params of attempts) {
+      const urlParametersString = getParametersString(params);
 
-    const { buurtcode, buurtnaam, gemeentenaam } = responseJson.response.docs[0];
+      for (const base of baseUrls) {
+        const requestUrl = `${base}?${urlParametersString}`;
 
-    if (!buurtcode) {
-      return { error: `No buurtcode for zipCode ${zipCode} in API response` };
+        dbg("Locatieserver request", { zipCode, params, requestUrl });
+
+        let response;
+        try {
+          response = await fetch(requestUrl);
+        } catch (networkErr) {
+          dbg("Locatieserver network error", networkErr);
+          continue; // try next base
+        }
+
+        dbg("Locatieserver response", { ok: response.ok, status: response.status, statusText: response.statusText });
+
+        if (!response.ok) {
+          // Try next base URL for this attempt
+          continue;
+        }
+
+        const responseJson = await response.json().catch(err => {
+          dbg("Locatieserver JSON parse error", err);
+          throw err;
+        });
+
+        const docs = (responseJson && responseJson.response && responseJson.response.docs) || [];
+        dbg("Locatieserver docs count", docs.length);
+        if (docs.length > 0) {
+          const sample = docs[0];
+          dbg("Locatieserver first doc keys", Object.keys(sample || {}));
+        }
+
+        const selected = docs.find(doc => doc && (doc.buurtcode || doc.buurt_code || doc.BU_CODE)) || docs[0];
+
+        if (!selected) {
+          dbg("Locatieserver: no docs for attempt", params.note, "base", base);
+          // Try next base URL for same params
+          continue;
+        }
+
+        const neighbourhoodCode = selected.buurtcode || selected.buurt_code || selected.BU_CODE;
+        const neighbourhoodName = selected.buurtnaam || selected.buurt_naam || selected.BU_NAAM || selected.buurtnaam_nn;
+        const municipalityName = selected.gemeentenaam || selected.GM_NAAM || selected.gemeente || selected.gemeente_naam;
+
+        dbg("Locatieserver selected", { neighbourhoodCode, neighbourhoodName, municipalityName });
+
+        if (neighbourhoodCode) {
+          return { neighbourhoodCode, neighbourhoodName, municipalityName };
+        }
+        // If selected without code, fall through to next base/attempt
+      }
     }
 
-    return {
-      neighbourhoodCode: buurtcode,
-      neighbourhoodName: buurtnaam,
-      municipalityName: gemeentenaam,
-    };
+    const msg = `No buurtcode found for zipCode ${zipCode} in Locatieserver response`;
+    dbg(msg);
+    return { error: msg };
   } catch (error) {
-    return { error: `Failed to fetch neighbourhood meta for zipCode ${zipCode}. Additional info: ${error.message}` };
+    const msg = `Failed to fetch neighbourhood meta for zipCode ${zipCode}. Additional info: ${error.message}`;
+    dbg(msg, error && error.stack ? error.stack : error);
+    return { error: msg };
   }
 }
 
@@ -52,10 +111,11 @@ async function getNeighbourhoodStatsWithYears(neighbourhoodCode) {
   const requests = years.map(async year => {
     const apiId = STATS_API_ID_BY_YEAR[year];
 
+    dbg("CBS fetch start", { year, apiId, neighbourhoodCode });
     const neighbourhoodDataForYear = await fetchDataForYear(apiId, neighbourhoodCode);
 
     if (!neighbourhoodDataForYear) {
-      console.error("Failed to fetch neighbourhood stats for year:", year, "apiId:", apiId);
+      console.error("[FundaNeighbourhoods][bg][api] Failed to fetch neighbourhood stats", { year, apiId, neighbourhoodCode });
       return null;
     }
 
@@ -72,10 +132,20 @@ async function fetchDataForYear(apiId, neighbourhoodCode) {
   const requestUrl = `https://opendata.cbs.nl/ODataApi/odata/${apiId}/TypedDataSet?${parameters}`;
 
   try {
+    dbg("CBS request", { requestUrl });
     const response = await fetch(requestUrl);
-    const responseJson = await response.json();
-    return responseJson.value[0];
+    dbg("CBS response", { ok: response.ok, status: response.status, statusText: response.statusText });
+    const responseJson = await response.json().catch(err => {
+      dbg("CBS JSON parse error", err);
+      throw err;
+    });
+    const len = Array.isArray(responseJson.value) ? responseJson.value.length : 0;
+    dbg("CBS value length", len);
+    const first = len > 0 ? Object.keys(responseJson.value[0] || {}).slice(0, 10) : [];
+    dbg("CBS first record keys", first);
+    return responseJson.value && responseJson.value[0] ? responseJson.value[0] : null;
   } catch (error) {
+    console.error("[FundaNeighbourhoods][bg][api] CBS fetch error", { apiId, neighbourhoodCode, requestUrl, error });
     return null;
   }
 }

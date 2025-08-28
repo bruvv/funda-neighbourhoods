@@ -6,7 +6,8 @@
   "permissions": ["storage"],
   "host_permissions": [
     "https://geodata.nationaalgeoregister.nl/*",
-    "https://opendata.cbs.nl/*"
+    "https://opendata.cbs.nl/*",
+    "https://api.pdok.nl/*"
   ],
   "background": {
     "service_worker": "background/background.js",
