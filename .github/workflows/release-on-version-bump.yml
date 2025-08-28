@@ -1,0 +1,86 @@
+name: Release on version bump
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-on-version-bump-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read current version
+        id: curr
+        run: |
+          echo "version=$(jq -r .version package.json)" >> $GITHUB_OUTPUT
+
+      - name: Read previous version (from parent commit)
+        id: prev
+        run: |
+          set -e
+          if git cat-file -e HEAD^:package.json 2>/dev/null; then
+            PV=$(git show HEAD^:package.json | jq -r .version)
+            echo "version=$PV" >> $GITHUB_OUTPUT
+          else
+            echo "version=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Decide if version bumped
+        id: decide
+        run: |
+          CURR="${{ steps.curr.outputs.version }}"
+          PREV="${{ steps.prev.outputs.version }}"
+          echo "Current: $CURR | Previous: $PREV"
+          if [ -n "$CURR" ] && [ "$CURR" != "$PREV" ]; then
+            echo "bumped=true" >> $GITHUB_OUTPUT
+          else
+            echo "bumped=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Node
+        if: steps.decide.outputs.bumped == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16'
+
+      - name: Install deps
+        if: steps.decide.outputs.bumped == 'true'
+        run: npm ci
+
+      - name: Build
+        if: steps.decide.outputs.bumped == 'true'
+        env:
+          # For newer runner images, webpack4 on Node>=17 needs legacy provider; Node16 is fine,
+          # but keep this for safety so local OpenSSL differences don't break the build.
+          NODE_OPTIONS: --openssl-legacy-provider
+        run: npm run build
+
+      - name: Package ZIP
+        if: steps.decide.outputs.bumped == 'true'
+        run: |
+          chmod +x ./create-release-zip.sh
+          ./create-release-zip.sh
+          ls -l *.zip
+
+      - name: Create GitHub Release
+        if: steps.decide.outputs.bumped == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.curr.outputs.version }}
+          name: v${{ steps.curr.outputs.version }}
+          generate_release_notes: true
+          files: |
+            funda-neighbourhoods-v${{ steps.curr.outputs.version }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
