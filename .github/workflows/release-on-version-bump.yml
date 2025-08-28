@@ -19,6 +19,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
       - name: Read current version
         id: curr
         run: |
@@ -59,11 +62,14 @@ jobs:
 
       - name: Build
         if: steps.decide.outputs.bumped == 'true'
-        env:
-          # For newer runner images, webpack4 on Node>=17 needs legacy provider; Node16 is fine,
-          # but keep this for safety so local OpenSSL differences don't break the build.
-          NODE_OPTIONS: --openssl-legacy-provider
-        run: npm run build
+        shell: bash
+        run: |
+          NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
+          echo "Node major: $NODE_MAJOR"
+          if [ "$NODE_MAJOR" -ge 17 ]; then
+            export NODE_OPTIONS=--openssl-legacy-provider
+          fi
+          npm run build
 
       - name: Package ZIP
         if: steps.decide.outputs.bumped == 'true'
@@ -83,4 +89,3 @@ jobs:
             funda-neighbourhoods-v${{ steps.curr.outputs.version }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
