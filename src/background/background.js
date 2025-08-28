@@ -36,13 +36,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const userSettings = await readUserSettings();
     console.log("[FundaNeighbourhoods][bg] User settings", userSettings);
 
-    const { badgeProperties, tableProperties } = getProperties(neighbourhoodWithMeta, userSettings);
+    const { badgeProperties, tableProperties, cardProperties } = getProperties(neighbourhoodWithMeta, userSettings);
     console.log("[FundaNeighbourhoods][bg] Computed properties", {
       badgeCount: Object.keys(badgeProperties || {}).length,
       tableCount: (tableProperties || []).length,
+      cardCount: (cardProperties || []).length,
     });
 
-    sendResponse({ badgeProperties, tableProperties });
+    sendResponse({ badgeProperties, tableProperties, cardProperties });
   });
 
   return true;

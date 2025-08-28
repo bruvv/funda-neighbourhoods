@@ -15,6 +15,60 @@ function dbg(...args) {
   } catch (_) {}
 }
 
+// PDOK search base (v3_1 is current)
+const PDOK_SEARCH_BASE = "https://api.pdok.nl/bzk/locatieserver/search/v3_1";
+
+async function pdokSuggest(q) {
+  const url = `${PDOK_SEARCH_BASE}/suggest?q=${encodeURIComponent(q)}`;
+  dbg("PDOK suggest", url);
+  try {
+    const res = await fetch(url);
+    dbg("PDOK suggest status", { ok: res.ok, status: res.status });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const docs = (json && json.response && json.response.docs) || [];
+    dbg("PDOK suggest docs", docs.length);
+    return docs;
+  } catch (e) {
+    dbg("PDOK suggest error", e);
+    return [];
+  }
+}
+
+async function pdokLookup(id) {
+  const url = `${PDOK_SEARCH_BASE}/lookup?id=${encodeURIComponent(id)}`;
+  dbg("PDOK lookup", url);
+  try {
+    const res = await fetch(url);
+    dbg("PDOK lookup status", { ok: res.ok, status: res.status });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const docs = (json && json.response && json.response.docs) || [];
+    return docs[0] || null;
+  } catch (e) {
+    dbg("PDOK lookup error", e);
+    return null;
+  }
+}
+
+function extractMetaFromDoc(doc) {
+  if (!doc) return {};
+  const neighbourhoodCode = doc.buurtcode || doc.buurt_code || doc.BU_CODE;
+  const neighbourhoodName = doc.buurtnaam || doc.buurt_naam || doc.BU_NAAM || doc.buurtnaam_nn;
+  const municipalityName = doc.gemeentenaam || doc.GM_NAAM || doc.gemeente || doc.gemeente_naam || doc.woonplaatsnaam;
+  return { neighbourhoodCode, neighbourhoodName, municipalityName };
+}
+
+function makeAddressVariants(addressQuery, zipCode) {
+  const base = (addressQuery || "").trim();
+  const normalized = base.replace(/\s*-\s*/g, "-").replace(/\s+/g, " ");
+  const removedDash = normalized.replace(/(\d+)-([A-Za-z])\b/, "$1 $2");
+  const withoutZip = normalized.replace(new RegExp(zipCode + "$"), "").trim();
+  const frontZip = `${zipCode} ${withoutZip}`.trim();
+  const variants = [normalized, removedDash, withoutZip, frontZip].filter(Boolean);
+  return Array.from(new Set(variants));
+}
+
 export async function fetchNeighbourhoodMeta(zipCode, addressQuery) {
   // Try a targeted postcode search first, then fall back to a generic search
   const attempts = [
@@ -27,14 +81,37 @@ export async function fetchNeighbourhoodMeta(zipCode, addressQuery) {
   ];
 
   try {
+    // 1) Try suggest + lookup using address variants when available
+    if (addressQuery) {
+      const variants = makeAddressVariants(addressQuery, zipCode);
+      for (const v of variants) {
+        const sdocs = await pdokSuggest(v);
+        const candidates = sdocs.filter(d => d && d.type === "adres");
+        dbg("PDOK suggest candidates", candidates.length, v);
+        for (const cand of candidates) {
+          if (!cand.id) continue;
+          // If cand has postcode, prefer match
+          if (cand.postcode && cand.postcode.replace(/\s/g, "") !== zipCode) continue;
+          const full = await pdokLookup(cand.id);
+          const meta = extractMetaFromDoc(full);
+          dbg("PDOK lookup meta", meta);
+          if (meta.neighbourhoodCode) {
+            return meta;
+          }
+        }
+      }
+    }
+
     const baseUrls = [
+      // PDOK new platform (recommended)
+      "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free",
+      // Legacy NGR endpoint (still widely used)
       "https://geodata.nationaalgeoregister.nl/locatieserver/v3/free",
-      "https://api.pdok.nl/bzk/locatieserver/v3/free",
-      "https://api.pdok.nl/bzk/locatieserver/search/v3/free",
     ];
 
     for (const params of attempts) {
-      const urlParametersString = getParametersString(params);
+      // Also ask for the fields we need when possible
+      const urlParametersString = getParametersString({ ...params, fl: "id,buurtcode,buurtnaam,gemeentenaam,weergavenaam,type,postcode" });
 
       for (const base of baseUrls) {
         const requestUrl = `${base}?${urlParametersString}`;
@@ -68,7 +145,9 @@ export async function fetchNeighbourhoodMeta(zipCode, addressQuery) {
           dbg("Locatieserver first doc keys", Object.keys(sample || {}));
         }
 
-        const selected = docs.find(doc => doc && (doc.buurtcode || doc.buurt_code || doc.BU_CODE)) || docs[0];
+        // Prefer type:adres
+        let selected = docs.find(doc => doc && doc.type === "adres");
+        if (!selected) selected = docs[0];
 
         if (!selected) {
           dbg("Locatieserver: no docs for attempt", params.note, "base", base);
@@ -76,9 +155,30 @@ export async function fetchNeighbourhoodMeta(zipCode, addressQuery) {
           continue;
         }
 
-        const neighbourhoodCode = selected.buurtcode || selected.buurt_code || selected.BU_CODE;
-        const neighbourhoodName = selected.buurtnaam || selected.buurt_naam || selected.BU_NAAM || selected.buurtnaam_nn;
-        const municipalityName = selected.gemeentenaam || selected.GM_NAAM || selected.gemeente || selected.gemeente_naam;
+        let { neighbourhoodCode, neighbourhoodName, municipalityName } = extractMetaFromDoc(selected);
+
+        // If fields missing, do a lookup by id to get full record
+        if ((!neighbourhoodCode || !neighbourhoodName || !municipalityName) && selected.id) {
+          const lookupBase = base.includes("search/") ? base.replace(/free$/, "lookup") : base.replace(/\/v3\/free$/, "/v3/lookup");
+          const lookupUrl = `${lookupBase}?id=${encodeURIComponent(selected.id)}`;
+          dbg("Locatieserver lookup", { lookupUrl });
+          try {
+            const lookupRes = await fetch(lookupUrl);
+            dbg("Locatieserver lookup response", { ok: lookupRes.ok, status: lookupRes.status, statusText: lookupRes.statusText });
+            if (lookupRes.ok) {
+              const lookupJson = await lookupRes.json();
+              const ldocs = (lookupJson && lookupJson.response && lookupJson.response.docs) || [];
+              if (ldocs.length) {
+                const full = ldocs[0];
+                neighbourhoodCode = neighbourhoodCode || full.buurtcode || full.buurt_code || full.BU_CODE;
+                neighbourhoodName = neighbourhoodName || full.buurtnaam || full.buurt_naam || full.BU_NAAM || full.buurtnaam_nn;
+                municipalityName = municipalityName || full.gemeentenaam || full.GM_NAAM || full.gemeente || full.gemeente_naam;
+              }
+            }
+          } catch (lookupErr) {
+            dbg("Locatieserver lookup error", lookupErr);
+          }
+        }
 
         dbg("Locatieserver selected", { neighbourhoodCode, neighbourhoodName, municipalityName });
 

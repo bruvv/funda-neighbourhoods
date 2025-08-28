@@ -16,9 +16,12 @@ export function getProperties(neighbourhoodApiResponse, userSettings) {
 
   const badgeProperties = getBadgeProperties(tableProperties, userSettings);
 
+  const cardProperties = filterTableByUserSettings(tableProperties, userSettings);
+
   return {
     badgeProperties,
     tableProperties,
+    cardProperties,
   };
 }
 
@@ -89,4 +92,10 @@ function getNeighbourhoodProperty(propertyConfig, apiResponseProperties) {
 
 function getBadgeProperties(tableProperties, userSettings) {
   return tableProperties.filter(({ name }) => userSettings[name] === true);
+}
+
+function filterTableByUserSettings(tableProperties, userSettings) {
+  const selected = tableProperties.filter(({ name }) => userSettings[name] === true);
+  // Hide non-table items like neighbourhoodName/municipalityName
+  return selected.filter(p => p.group !== 'doNotShowInTable');
 }

@@ -29,10 +29,105 @@ li[class*="label-"] + .funda-neighbourhoods-badge {
 
 .funda-neighbourhoods-table-container {
   height: auto;
-  margin-top: 16px;
+  margin-top: 0;
 }
 
 .funda-neighbourhoods-generic-error-message {
   color: black;
   margin-right: 8px;
+}
+
+/* New card-style container matching Funda look-and-feel */
+.funda-neighbourhoods-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb; /* slate-200 */
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.funda-neighbourhoods-card__header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.funda-neighbourhoods-configure-card-button{
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 4px 6px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.funda-neighbourhoods-configure-card-button:hover{
+  background: #f9fafb;
+}
+
+.funda-neighbourhoods-card .funda-neighbourhoods-card__title {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: #111827; /* gray-900 */
+}
+
+/* Reset legacy styles inside our container */
+.funda-neighbourhoods-card .object-kenmerken-list {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.funda-neighbourhoods-card dt,
+.funda-neighbourhoods-card dd {
+  margin: 0;
+  padding: 6px 0;
+  background: transparent !important;
+  border: 0 !important;
+  color: #1f2937; /* gray-800 */
+}
+
+.funda-neighbourhoods-card dt {
+  color: #4b5563; /* gray-600 */
+  font-weight: 500;
+}
+
+.funda-neighbourhoods-card dd {
+  font-weight: 600;
+  text-align: right;
+}
+
+.funda-neighbourhoods-card .object-kenmerken-list-header {
+  grid-column: 1 / -1;
+  margin: 12px 0 4px 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: #374151; /* gray-700 */
+}
+
+/* Compact badges/pills look */
+.badges-container .funda-neighbourhoods-badge {
+  border-radius: 999px;
+  background: #f3f4f6; /* gray-100 */
+  color: #111827;
+  border: 1px solid #e5e7eb;
+}
+
+.funda-neighbourhoods-configure-badge {
+  background: #ffffff !important;
+}
+
+.funda-neighbourhoods-badges-row{
+  list-style: none;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 8px 0;
+  padding: 0;
 }
