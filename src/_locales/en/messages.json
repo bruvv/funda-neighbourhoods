@@ -275,7 +275,19 @@
   ,
   "amenities": { "message": "Amenities" },
   "schoolsInNeighbourhood": { "message": "Schools in neighbourhood" },
-  "avgDistanceToSchools": { "message": "Avg. distance to schools" }
+  "avgDistanceToSchools": { "message": "Avg. distance to schools" },
+  "gpsInNeighbourhood": { "message": "GPs in neighbourhood" },
+  "avgDistanceToGps": { "message": "Avg. distance to GP" },
+  "afterSchoolCareInNeighbourhood": { "message": "After school care in neighbourhood" },
+  "avgDistanceToAfterSchoolCare": { "message": "Avg. distance to after school care" },
+  "daycareInNeighbourhood": { "message": "Day care in neighbourhood" },
+  "avgDistanceToDaycare": { "message": "Avg. distance to day care" },
+  "restaurantsInNeighbourhood": { "message": "Restaurants in neighbourhood" },
+  "avgDistanceToRestaurants": { "message": "Avg. distance to restaurants" },
+  "supermarketsInNeighbourhood": { "message": "Supermarkets in neighbourhood" },
+  "avgDistanceToSupermarkets": { "message": "Avg. distance to supermarkets" },
+  "cafesInNeighbourhood": { "message": "Cafes in neighbourhood" },
+  "avgDistanceToCafes": { "message": "Avg. distance to cafes" }
   ,
   "loadingNeighbourhood": { "message": "Loading neighbourhood data…" }
   ,

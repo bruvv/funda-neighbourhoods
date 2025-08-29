@@ -275,7 +275,19 @@
   ,
   "amenities": { "message": "Voorzieningen" },
   "schoolsInNeighbourhood": { "message": "Scholen in de buurt" },
-  "avgDistanceToSchools": { "message": "Gem. afstand tot scholen" }
+  "avgDistanceToSchools": { "message": "Gem. afstand tot scholen" },
+  "gpsInNeighbourhood": { "message": "Huisartsen in de buurt" },
+  "avgDistanceToGps": { "message": "Gem. afstand tot huisarts" },
+  "afterSchoolCareInNeighbourhood": { "message": "Buitenschoolse opvang in de buurt" },
+  "avgDistanceToAfterSchoolCare": { "message": "Gem. afstand tot buitenschoolse opvang" },
+  "daycareInNeighbourhood": { "message": "Kinderopvang in de buurt" },
+  "avgDistanceToDaycare": { "message": "Gem. afstand tot kinderopvang" },
+  "restaurantsInNeighbourhood": { "message": "Restaurants in de buurt" },
+  "avgDistanceToRestaurants": { "message": "Gem. afstand tot restaurants" },
+  "supermarketsInNeighbourhood": { "message": "Supermarkten in de buurt" },
+  "avgDistanceToSupermarkets": { "message": "Gem. afstand tot supermarkten" },
+  "cafesInNeighbourhood": { "message": "Cafés in de buurt" },
+  "avgDistanceToCafes": { "message": "Gem. afstand tot cafés" }
   ,
   "loadingNeighbourhood": { "message": "Buurtgegevens laden…" }
   ,
