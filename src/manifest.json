@@ -7,7 +7,10 @@
   "host_permissions": [
     "https://geodata.nationaalgeoregister.nl/*",
     "https://opendata.cbs.nl/*",
-    "https://api.pdok.nl/*"
+    "https://dataderden.cbs.nl/*",
+    "https://api.pdok.nl/*",
+    "https://overpass.kumi.systems/*",
+    "https://overpass-api.de/*"
   ],
   "background": {
     "service_worker": "background/background.js",
@@ -15,7 +18,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.funda.nl/*"],
+      "matches": [
+        "https://www.funda.nl/detail/koop/*",
+        "https://www.funda.nl/koop/*"
+      ],
       "js": ["content/content.js"],
       "css": ["content/content.css"]
     }

@@ -109,6 +109,7 @@ li[class*="label-"] + .funda-neighbourhoods-badge {
   line-height: 20px;
   font-weight: 600;
   color: #374151; /* gray-700 */
+  cursor: default;
 }
 
 /* Compact badges/pills look */
@@ -130,4 +131,71 @@ li[class*="label-"] + .funda-neighbourhoods-badge {
   flex-wrap: wrap;
   margin: 0 0 8px 0;
   padding: 0;
+}
+
+/* Graph container */
+.funda-neighbourhoods-graph {
+  margin-top: 8px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+
+.funda-neighbourhoods-graph-toggle {
+  font-weight: 500;
+  color: #2563eb;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Loading placeholder */
+.funda-neighbourhoods-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4b5563; /* gray-600 */
+  padding: 8px 0;
+}
+
+.funda-neighbourhoods-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: funda-neighbourhoods-spin 1s linear infinite;
+}
+
+@keyframes funda-neighbourhoods-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Simple loading bar */
+.funda-neighbourhoods-loading-wrap {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+}
+
+.funda-neighbourhoods-loading-bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  background: #e5e7eb; /* gray-200 */
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.funda-neighbourhoods-loading-fill {
+  height: 100%;
+  width: 40%;
+  background: #2563eb; /* blue-600 */
+  transform: translateX(-40%);
+  animation: funda-neighbourhoods-loading 1.2s ease-in-out infinite;
+}
+
+@keyframes funda-neighbourhoods-loading {
+  0% { transform: translateX(-40%); }
+  50% { transform: translateX(60%); }
+  100% { transform: translateX(140%); }
 }

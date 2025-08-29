@@ -6,10 +6,24 @@ const MAX_TRIES = 30;
 const TRY_DELAY_MS = 1000;
 let tries = 0;
 const CARD_ID = 'funda-neighbourhoods-card';
-let lastCardHTML = '';
+const CARD_CONTENT_ID = 'funda-neighbourhoods-card-content';
+const LOADING_WRAP_ID = 'funda-neighbourhoods-loading-wrap';
+const LOADING_BAR_ID = 'funda-neighbourhoods-loading-bar';
+let lastContentHTML = '';
 let observerStarted = false;
+let observerRef = null;
+let isApplyingDom = false;
+let ensureTimer = null;
+let lastRenderedProperties = [];
+let pendingRender = null;
+// no placeholder injection
 
 function init() {
+  try { console.debug('[FundaNeighbourhoods][content] init', location.pathname, location.href); } catch {}
+  if (!isEligiblePropertyDetailPage()) {
+    console.debug('[FundaNeighbourhoods][content] Not a property detail page; skipping');
+    return;
+  }
   const zipCode = getZipCode();
   if (!zipCode) {
     console.warn("[FundaNeighbourhoods][content] Zip code not found yet. Will retry.");
@@ -28,10 +42,15 @@ function init() {
   }
 
   const addressQuery = getAddressQuery();
+  // Removed loading bar (was flaky on dynamic pages)
   console.log("Funda Neighbourhoods extension:", { zipCode, addressQuery });
-  chrome.runtime.sendMessage({ zipCode, addressQuery }, ({ badgeProperties, tableProperties, cardProperties, error }) => {
+  const debugMode = location.hash.includes('fn-debug');
+  chrome.runtime.sendMessage({ zipCode, addressQuery, debug: debugMode }, ({ badgeProperties, tableProperties, cardProperties, error, debugInfo }) => {
     console.log({ badgeProperties, tableProperties, cardProperties });
     console.log("[FundaNeighbourhoods][content] Response from background", { hasError: !!error });
+    if (debugMode && debugInfo) {
+      try { console.groupCollapsed('[FundaNeighbourhoods][diag] initial'); debugInfo.forEach(l => console.log(l)); console.groupEnd(); } catch {}
+    }
 
     // Decide which properties to show in the card: prefer background-filtered list; otherwise, filter by selection on the client.
     let propertiesForCard = Array.isArray(cardProperties) ? cardProperties.slice() : [];
@@ -47,13 +66,53 @@ function init() {
       console.debug('[FundaNeighbourhoods][content] Rendering selected rows', propertiesForCard.length);
     }
 
-    addNeighbourhoodCard({ tableProperties: propertiesForCard, error });
+    // Defer rendering until anchors exist
+    if (!anchorsReady()) {
+      pendingRender = { tableProperties: propertiesForCard, error };
+      startObserverOnce();
+      console.debug('[FundaNeighbourhoods][content] Deferring render until anchors are ready');
+    } else {
+      addNeighbourhoodCard({ tableProperties: propertiesForCard, error });
+    }
+    // no loading bar
 
     subscribeToBadgeClicks();
   });
+
+// Listen for late updates from background (extras resolved)
+try {
+  chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
+    if (msg && msg.action === 'neighbourhoodUpdate') {
+      console.debug('[FundaNeighbourhoods][content] Received late update');
+      const props = Array.isArray(msg.cardProperties) ? msg.cardProperties : [];
+      if (props.length) {
+        if (!anchorsReady()) { pendingRender = { tableProperties: props, error: false }; startObserverOnce(); }
+        else { addNeighbourhoodCard({ tableProperties: props, error: false }); }
+      }
+      const debugMode = location.hash.includes('fn-debug');
+      if (debugMode && msg.debugInfo) {
+        try { console.groupCollapsed('[FundaNeighbourhoods][diag] late'); msg.debugInfo.forEach(l => console.log(l)); console.groupEnd(); } catch {}
+      }
+    }
+  });
+} catch (_) {}
 }
 
 init();
+
+function isEligiblePropertyDetailPage() {
+  // Be permissive: accept detail pages (koop/huur) and classic koop slugs,
+  // or when header markers exist in the DOM (dynamic hydration/new layouts).
+  try {
+    const path = location.pathname.replace(/\/+$/, '/');
+    const isDetailAny = /^\/detail\//.test(path);
+    const isClassicKoop = /^\/koop\//.test(path) && /\/(huis-|woning-|appartement-|woonhuis-)/.test(path);
+    const hasHeader = !!(document.querySelector("[data-test-id='object-header-title']") || document.querySelector('.object-header__title') || document.querySelector("[data-test-id='object-header']"));
+    return isDetailAny || isClassicKoop || hasHeader;
+  } catch {
+    return true; // fail-open to avoid skipping injection
+  }
+}
 
 function getZipCode() {
   // Primary selector (legacy Funda layout)
@@ -184,6 +243,11 @@ function getAddressQuery() {
 }
 
 function addNeighbourhoodCard({ tableProperties, badgeProperties = [], error }) {
+  if (!anchorsReady()) {
+    pendingRender = { tableProperties, error };
+    startObserverOnce();
+    return;
+  }
   const title = chrome.i18n.getMessage("neighbourhood");
   const tableHtml = error
     ? `<div class="funda-neighbourhoods-generic-error-message">${chrome.i18n.getMessage("genericErrorMessage")}</div>`
@@ -197,19 +261,43 @@ function addNeighbourhoodCard({ tableProperties, badgeProperties = [], error }) 
       </svg>
     </button>`;
 
-  const cardHtml = `
-    <section id="${CARD_ID}" class="funda-neighbourhoods-card">
-      <div class="funda-neighbourhoods-card__header">
-        <h2 class="funda-neighbourhoods-card__title">${title}</h2>
-        ${gear}
-      </div>
-      ${tableHtml}
-    </section>
+  lastRenderedProperties = tableProperties || [];
+
+  const innerHtml = `
+    <div class="funda-neighbourhoods-card__header">
+      <h2 class="funda-neighbourhoods-card__title">${title}</h2>
+      ${gear}
+    </div>
+    ${tableHtml}
+    <div class="funda-neighbourhoods-graph">
+      <span class="funda-neighbourhoods-graph-toggle" data-fn-action="toggleGraph">${chrome.i18n.getMessage('amenities')}: ${chrome.i18n.getMessage('avgDistanceToSchools')} — klik om grafiek te tonen</span>
+      <div id="funda-neighbourhoods-graph-canvas" style="display:none"></div>
+    </div>
   `;
-  lastCardHTML = cardHtml;
-  ensureCardPlacement();
+
+  lastContentHTML = innerHtml;
+
+  let card = document.getElementById(CARD_ID);
+  if (!card) {
+    card = document.createElement('section');
+    card.id = CARD_ID;
+    card.className = 'funda-neighbourhoods-card';
+    const content = document.createElement('div');
+    content.id = CARD_CONTENT_ID;
+    content.innerHTML = innerHtml;
+    card.appendChild(content);
+  } else {
+    const content = card.querySelector('#' + CARD_CONTENT_ID) || (() => { const n = document.createElement('div'); n.id = CARD_CONTENT_ID; card.appendChild(n); return n; })();
+    content.innerHTML = innerHtml;
+  }
+
+  const placed = placeCard(card);
+  // Keep observer running to survive re-renders
   startObserverOnce();
+  wireGraphToggle();
 }
+
+// placeholder removed
 
 function findOmschrijvingSection() {
   // Look for a section with an H2 that equals "Omschrijving"
@@ -218,45 +306,181 @@ function findOmschrijvingSection() {
   return target ? target.closest('section') : null;
 }
 
-function ensureCardPlacement() {
-  const card = document.getElementById(CARD_ID);
+function findAboutHeader() {
+  // New layout: a header block with id="about" sits right above the description section
+  try {
+    return document.querySelector('#about');
+  } catch {
+    return null;
+  }
+}
+
+function anchorsReady() {
+  return !!(findAboutHeader() || findOmschrijvingSection());
+}
+
+function showLoadingBar() {
+  if (document.getElementById(LOADING_WRAP_ID)) return;
+  const wrap = document.createElement('div');
+  wrap.id = LOADING_WRAP_ID;
+  wrap.className = 'funda-neighbourhoods-loading-wrap';
+  const bar = document.createElement('div');
+  bar.id = LOADING_BAR_ID;
+  bar.className = 'funda-neighbourhoods-loading-bar';
+  const fill = document.createElement('div');
+  fill.className = 'funda-neighbourhoods-loading-fill';
+  bar.appendChild(fill);
+  wrap.appendChild(bar);
+
+  // Place before Omschrijving if possible, else at top of main
   const descriptionSection = findOmschrijvingSection();
-  if (descriptionSection) {
-    if (card) {
-      // Make sure card is placed before description section
-      const rel = card.compareDocumentPosition(descriptionSection);
-      const cardBefore = (rel & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-      if (!cardBefore) {
-        descriptionSection.parentNode.insertBefore(card, descriptionSection);
-      }
-    } else if (lastCardHTML) {
-      descriptionSection.insertAdjacentHTML('beforebegin', lastCardHTML);
-    }
-    return;
-  }
-
-  // Fallbacks for legacy pages
-  const agentElement = document.querySelector('.object-detail-verkocht__makelaars-header');
-  if (agentElement) {
-    if (!card && lastCardHTML) agentElement.insertAdjacentHTML('beforebegin', lastCardHTML);
-    return;
-  }
-
-  // As last resort, append near top of main content
-  if (!card && lastCardHTML) {
+  if (descriptionSection && descriptionSection.parentNode) {
+    descriptionSection.parentNode.insertBefore(wrap, descriptionSection);
+    try { console.debug('[FundaNeighbourhoods][content] Loading bar inserted before Omschrijving'); } catch {}
+  } else {
     const main = document.querySelector('main') || document.body;
-    main.insertAdjacentHTML('afterbegin', lastCardHTML);
+    main.insertAdjacentElement('afterbegin', wrap);
+    try { console.debug('[FundaNeighbourhoods][content] Loading bar inserted at top of main'); } catch {}
   }
+}
+
+function removeLoadingBar() {
+  const wrap = document.getElementById(LOADING_WRAP_ID);
+  if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
+}
+
+function ensureCardPlacement() {
+  if (isApplyingDom) return;
+  isApplyingDom = true;
+  try {
+    const card = document.getElementById(CARD_ID);
+    if (!card) {
+      if (pendingRender && anchorsReady()) {
+        const pr = pendingRender; pendingRender = null;
+        addNeighbourhoodCard(pr);
+      }
+      return;
+    }
+    const placed = placeCard(card);
+    const content = card.querySelector('#' + CARD_CONTENT_ID);
+    if (content && lastContentHTML && content.innerHTML !== lastContentHTML) {
+      content.innerHTML = lastContentHTML;
+    }
+    if (placed && observerRef) { try { observerRef.disconnect(); } catch {} observerStarted = false; }
+  } finally {
+    isApplyingDom = false;
+  }
+}
+
+function placeCard(card) {
+  const about = findAboutHeader();
+  const descriptionSection = findOmschrijvingSection();
+  if (about && (!descriptionSection || about.compareDocumentPosition(descriptionSection) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+    // Insert immediately after the #about header block
+    if (card.previousSibling !== about) {
+      about.insertAdjacentElement('afterend', card);
+    }
+    return true;
+  }
+  if (descriptionSection) {
+    if (card.parentNode !== descriptionSection.parentNode || card.nextSibling !== descriptionSection) {
+      descriptionSection.parentNode.insertBefore(card, descriptionSection);
+    }
+    return true;
+  }
+  return false;
+}
+
+function wireGraphToggle() {
+  const container = document.getElementById('funda-neighbourhoods-graph-canvas');
+  const toggle = document.querySelector('[data-fn-action="toggleGraph"]');
+  if (!container || !toggle) return;
+
+  toggle.addEventListener('click', () => {
+    const visible = container.style.display !== 'none';
+    if (visible) {
+      container.style.display = 'none';
+      return;
+    }
+    container.style.display = 'block';
+    renderGraph(container, lastRenderedProperties);
+  }, { once: false });
+}
+
+function renderGraph(container, properties) {
+  // Build dataset from any amenities avg distance properties
+  const items = properties
+    .filter(p => p.group === 'amenities' && p.name.indexOf('avgDistance') === 0)
+    .map(p => ({ label: chrome.i18n.getMessage(p.name) || p.label || p.name, value: parseDistance(getTextValue(p)) }));
+
+  if (!items.length) {
+    container.innerHTML = `<div style="color:#6b7280">${chrome.i18n.getMessage('noInfo') || 'No info'}</div>`;
+    return;
+  }
+
+  const max = Math.max(...items.map(i => i.value));
+  const width = container.clientWidth || 600;
+  const barH = 16, gap = 8, leftPad = 140, rightPad = 40, topPad = 10, bottomPad = 10;
+  const height = topPad + bottomPad + items.length * (barH + gap) - gap;
+
+  const scale = v => (v / (max || 1)) * (width - leftPad - rightPad);
+
+  const bars = items.map((i, idx) => {
+    const y = topPad + idx * (barH + gap);
+    const w = Math.max(2, Math.round(scale(i.value)));
+    const label = i.label.replace(/^Avg\.\s*/i, '');
+    const display = formatMeters(i.value);
+    return `<g>
+      <text x="0" y="${y + barH - 3}" fill="#4b5563" font-size="12">${escapeXml(label)}</text>
+      <rect x="${leftPad}" y="${y}" width="${w}" height="${barH}" fill="#60a5fa" rx="3"/>
+      <text x="${leftPad + w + 6}" y="${y + barH - 3}" fill="#111827" font-size="12">${display}</text>
+    </g>`;
+  }).join('');
+
+  container.innerHTML = `<svg width="100%" viewBox="0 0 ${width} ${height}" role="img" aria-label="Amenities distances">${bars}</svg>`;
+}
+
+function getTextValue(p) {
+  // p.value is formatted already (e.g., "1.5 km" or "700 m")
+  return p && p.value ? String(p.value) : '';
+}
+
+function parseDistance(text) {
+  // Accept "1.2 km" or "700 m"
+  if (!text) return 0;
+  const km = text.match(/([0-9]+(?:\.[0-9]+)?)\s*km/i);
+  if (km) return Math.round(parseFloat(km[1]) * 1000);
+  const m = text.match(/([0-9]+)\s*m/i);
+  if (m) return parseInt(m[1], 10);
+  const num = parseFloat(text);
+  return isFinite(num) ? num : 0;
+}
+
+function formatMeters(m) {
+  if (!isFinite(m) || m === null) return chrome.i18n.getMessage('noInfo') || 'No info';
+  if (m >= 1000) return `${(m/1000).toFixed(1)} km`;
+  return `${Math.round(m)} m`;
+}
+
+function escapeXml(s){
+  return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 }
 
 function startObserverOnce() {
   if (observerStarted) return;
   observerStarted = true;
-  const mo = new MutationObserver(() => {
-    // Re-ensure placement if Funda re-hydrates and replaces nodes
-    ensureCardPlacement();
+  observerRef = new MutationObserver(mutations => {
+    // Ignore mutations coming from inside our card
+    for (const m of mutations) {
+      const t = m.target;
+      if (t && (t.id === CARD_ID || (t.closest && t.closest('#' + CARD_ID)))) continue;
+      if (ensureTimer) clearTimeout(ensureTimer);
+      ensureTimer = setTimeout(ensureCardPlacement, 150);
+      break;
+    }
   });
-  mo.observe(document.documentElement || document.body, { childList: true, subtree: true });
+  const root = document.body || document.documentElement;
+  observerRef.observe(root, { childList: true, subtree: true });
 }
 
 function addBadges(badgesContainerElement, badgeProperties) {

@@ -34,9 +34,14 @@ function getTableProperties(apiResponseProperties) {
     return apiResponsePropertyName;
   });
 
+  // Properties without apiField but present in aggregated response (extras)
+  const computedProperties = VIEWABLE_PROPERTIES.filter(viewableProperty => {
+    return !viewableProperty.apiField && viewableProperty.group !== 'doNotShowInTable' && apiResponseProperties.hasOwnProperty(viewableProperty.name);
+  });
+
   const nonImmigrants = VIEWABLE_PROPERTIES.filter(({ name }) => name === "nonImmigrants");
 
-  return [...nonApiProperties, ...apiProperties, ...nonImmigrants].map(viewableProperty =>
+  return [...nonApiProperties, ...apiProperties, ...computedProperties, ...nonImmigrants].map(viewableProperty =>
     getNeighbourhoodProperty(viewableProperty, apiResponseProperties)
   );
 }
@@ -45,25 +50,42 @@ function getPropertyValue(propertyConfig, apiResponsePropertyName, properties) {
   const { name, apiField, valueFormat } = propertyConfig;
 
   if (typeof valueFormat === "function") {
-    return valueFormat(apiResponsePropertyName, properties);
+    try {
+      return valueFormat(apiResponsePropertyName, properties);
+    } catch (e) {
+      try { return chrome.i18n.getMessage("noInfo"); } catch { return "No info"; }
+    }
   }
 
   if (valueFormat === VALUE_FORMATS.PERCENTAGE) {
-    return properties[apiResponsePropertyName].value + "%";
+    const obj = apiResponsePropertyName && properties[apiResponsePropertyName];
+    const v = obj && typeof obj.value === 'number' ? obj.value : null;
+    if (!isFinite(v)) { try { return chrome.i18n.getMessage("noInfo"); } catch { return "No info"; } }
+    return v + "%";
   }
 
   if (valueFormat === VALUE_FORMATS.CONVERT_RESIDENTS_COUNT_TO_PERCENTAGE) {
-    const residentsCount = properties[findApiResponsePropertyName(properties, "AantalInwoners")].value;
-    const shareOfResidents = properties[apiResponsePropertyName].value / residentsCount;
+    const residentsKey = findApiResponsePropertyName(properties, "AantalInwoners");
+    const residentsObj = residentsKey && properties[residentsKey];
+    const numeratorObj = apiResponsePropertyName && properties[apiResponsePropertyName];
+    const residentsCount = residentsObj && typeof residentsObj.value === 'number' ? residentsObj.value : null;
+    const numerator = numeratorObj && typeof numeratorObj.value === 'number' ? numeratorObj.value : null;
+    if (!isFinite(residentsCount) || !isFinite(numerator) || residentsCount <= 0) {
+      try { return chrome.i18n.getMessage("noInfo"); } catch { return "No info"; }
+    }
+    const shareOfResidents = numerator / residentsCount;
     const integerPercentage = Math.round(shareOfResidents * 100);
     return integerPercentage + "%";
   }
 
-  if (properties[apiResponsePropertyName]) {
+  if (apiResponsePropertyName && properties[apiResponsePropertyName] && properties[apiResponsePropertyName].hasOwnProperty('value')) {
     return properties[apiResponsePropertyName].value;
   }
 
-  return properties[name].value;
+  if (properties[name] && properties[name].hasOwnProperty('value')) {
+    return properties[name].value;
+  }
+  try { return chrome.i18n.getMessage("noInfo"); } catch { return "No info"; }
 }
 
 function getNeighbourhoodProperty(propertyConfig, apiResponseProperties) {
@@ -73,7 +95,15 @@ function getNeighbourhoodProperty(propertyConfig, apiResponseProperties) {
   const shortLabel = chrome.i18n.getMessage(name + "Short");
 
   const apiResponsePropertyName = findApiResponsePropertyName(apiResponseProperties, apiField);
-  const year = apiField && apiResponseProperties[apiResponsePropertyName].year;
+  let year;
+  try {
+    if (apiField && apiResponsePropertyName && apiResponseProperties[apiResponsePropertyName]) {
+      year = apiResponseProperties[apiResponsePropertyName].year;
+    }
+  } catch (_) {}
+  if (!year && apiResponseProperties && apiResponseProperties[name] && apiResponseProperties[name].year) {
+    year = apiResponseProperties[name].year;
+  }
 
   const value = getPropertyValue(propertyConfig, apiResponsePropertyName, apiResponseProperties);
 

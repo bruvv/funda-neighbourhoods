@@ -7,6 +7,37 @@ export const VIEWABLE_PROPERTIES = [
     name: "neighbourhoodName",
     group: "doNotShowInTable",
   },
+  // --- Safety ---
+  {
+    name: "crimeScore",
+    group: "safety",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["crimeScore"];
+      const v = obj && obj.value;
+      return typeof v === "number" ? `${Math.max(0, Math.min(100, Math.round(v)))}/100` : chrome.i18n.getMessage("noInfo");
+    },
+  },
+  // --- Amenities (OSM/Overpass) ---
+  {
+    name: "schoolsInNeighbourhood",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["schoolsInNeighbourhood"];
+      const v = obj && obj.value;
+      return typeof v === "number" ? `${v}` : chrome.i18n.getMessage("noInfo");
+    },
+  },
+  {
+    name: "avgDistanceToSchools",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["avgDistanceToSchools"];
+      const v = obj && obj.value;
+      if (typeof v !== "number" || !(isFinite(v))) return chrome.i18n.getMessage("noInfo");
+      if (v >= 1000) return `${(v / 1000).toFixed(1)} km`;
+      return `${v} m`;
+    },
+  },
   {
     name: "municipalityName",
     group: "doNotShowInTable",
@@ -215,12 +246,20 @@ export const VIEWABLE_PROPERTIES = [
     name: "nonImmigrants",
     group: "immigrationBackground",
     valueFormat: (apiField, properties) => {
-      const residentsCount = properties[findApiResponsePropertyName(properties, "AantalInwoners")].value;
-      const westernImmigrantsCount = properties[findApiResponsePropertyName(properties, "WestersTotaal")].value;
-      const nonWesternImmigrantsCount = properties[findApiResponsePropertyName(properties, "NietWestersTotaal")].value;
-      const totalImmigrantsCount = westernImmigrantsCount + nonWesternImmigrantsCount;
-      const shareOfImmigrants = totalImmigrantsCount / residentsCount;
-      const shareOfNonImmigrants = 1 - shareOfImmigrants;
+      const resKey = findApiResponsePropertyName(properties, "AantalInwoners");
+      const westKey = findApiResponsePropertyName(properties, "WestersTotaal");
+      const nonWestKey = findApiResponsePropertyName(properties, "NietWestersTotaal");
+      const residentsObj = resKey && properties[resKey];
+      const westObj = westKey && properties[westKey];
+      const nonWestObj = nonWestKey && properties[nonWestKey];
+      const residents = residentsObj && typeof residentsObj.value === 'number' ? residentsObj.value : null;
+      const west = westObj && typeof westObj.value === 'number' ? westObj.value : null;
+      const nonWest = nonWestObj && typeof nonWestObj.value === 'number' ? nonWestObj.value : null;
+      if (!isFinite(residents) || residents <= 0 || !isFinite(west) || !isFinite(nonWest)) {
+        return chrome.i18n.getMessage("noInfo");
+      }
+      const totalImmigrants = west + nonWest;
+      const shareOfNonImmigrants = 1 - (totalImmigrants / residents);
       const integerPercentage = Math.round(shareOfNonImmigrants * 100);
       return integerPercentage + "%";
     },

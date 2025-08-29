@@ -52,7 +52,7 @@ function makeSectionHeaderHtml(groupName) {
   const headerText = chrome.i18n.getMessage(groupName);
 
   return `
-    <h3 class="object-kenmerken-list-header" data-test="propertiesGroup-${groupName}">
+    <h3 class="object-kenmerken-list-header" data-group="${groupName}" data-test="propertiesGroup-${groupName}">
       ${headerText}
     </h3>
   `;

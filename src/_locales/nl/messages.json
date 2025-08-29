@@ -272,5 +272,13 @@
   "configureBadges": {
     "message": "Badges configureren"
   }
+  ,
+  "amenities": { "message": "Voorzieningen" },
+  "schoolsInNeighbourhood": { "message": "Scholen in de buurt" },
+  "avgDistanceToSchools": { "message": "Gem. afstand tot scholen" }
+  ,
+  "loadingNeighbourhood": { "message": "Buurtgegevens laden…" }
+  ,
+  "safety": { "message": "Veiligheid" },
+  "crimeScore": { "message": "Crimescore (hoger is veiliger)" }
 }
-

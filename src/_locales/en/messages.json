@@ -272,5 +272,13 @@
   "configureBadges": {
     "message": "Configure badges"
   }
+  ,
+  "amenities": { "message": "Amenities" },
+  "schoolsInNeighbourhood": { "message": "Schools in neighbourhood" },
+  "avgDistanceToSchools": { "message": "Avg. distance to schools" }
+  ,
+  "loadingNeighbourhood": { "message": "Loading neighbourhood data…" }
+  ,
+  "safety": { "message": "Safety" },
+  "crimeScore": { "message": "Crime score (higher is safer)" }
 }
-
