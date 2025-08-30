@@ -20,6 +20,12 @@
   margin-right: 6px;
 }
 
+.options-page-select-container {
+  margin-left: 6px;
+  display: flex;
+  align-items: center;
+}
+
 .options-page-checkbox,
 .options-page-label {
   cursor: pointer;
