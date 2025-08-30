@@ -7,7 +7,11 @@ initializePage();
 async function initializePage() {
   const userSettings = await readUserSettings();
 
+  const defaultLanguage = chrome.i18n.getUILanguage().startsWith("nl") ? "nl" : "en";
+  const selectedLanguage = userSettings.language || defaultLanguage;
+
   const headerHtml = makeHeaderHtml();
+  const languageSwitchHtml = makeLanguageSwitchHtml(selectedLanguage);
   const optionsTableHtml = makeOptionsTableHtml(userSettings);
 
   document
@@ -15,14 +19,46 @@ async function initializePage() {
     .insertAdjacentHTML("afterbegin", headerHtml);
 
   document
+    .getElementById("language-switch")
+    .insertAdjacentHTML("afterbegin", languageSwitchHtml);
+
+  document
     .getElementById("options-table")
     .insertAdjacentHTML("afterbegin", optionsTableHtml);
 
   document.addEventListener("click", handleClicks);
+
+  document
+    .getElementById("language-switch-select")
+    .addEventListener("change", handleLanguageChange);
 }
 
 function makeHeaderHtml() {
   return `<h3>${chrome.i18n.getMessage("selectBadges")}</h3>`;
+}
+
+function makeLanguageSwitchHtml(selectedLanguage) {
+  const languageLabel = chrome.i18n.getMessage("selectLanguage");
+  const englishLabel = chrome.i18n.getMessage("english");
+  const dutchLabel = chrome.i18n.getMessage("dutch");
+  const enSelected = selectedLanguage === "en" ? "selected" : "";
+  const nlSelected = selectedLanguage === "nl" ? "selected" : "";
+
+  return `
+    <div class="options-page-row">
+      <div class="options-page-label-container">
+        <label class="options-page-label" for="language-switch-select">
+          ${languageLabel}
+        </label>
+      </div>
+      <div class="options-page-select-container">
+        <select id="language-switch-select" data-test="languageSelect">
+          <option value="en" ${enSelected}>${englishLabel}</option>
+          <option value="nl" ${nlSelected}>${dutchLabel}</option>
+        </select>
+      </div>
+    </div>
+  `;
 }
 
 function makeOptionsTableHtml(userSettings) {
@@ -78,6 +114,10 @@ function handleClicks(event) {
   if (isOptionClick) {
     chrome.storage.sync.set({ [clickedOptionName]: clickedElement.checked });
   }
+}
+
+function handleLanguageChange(event) {
+  chrome.storage.sync.set({ language: event.target.value });
 }
 
 function makeSectionHeaderHtml(groupName) {
