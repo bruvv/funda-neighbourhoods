@@ -11,6 +11,15 @@
   "selectBadges": {
     "message": "Select badges visible at the top of the property page"
   },
+  "selectLanguage": {
+    "message": "Select language"
+  },
+  "english": {
+    "message": "English"
+  },
+  "dutch": {
+    "message": "Dutch"
+  },
   "doNotShowInTable": {
     "message": ""
   },

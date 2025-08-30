@@ -160,9 +160,9 @@ describe("Options page", () => {
     expect(allPropertyNames).toEqual(renderedPropertyNames);
   });
 
-  it("Default options should be selected", async () => {
-    const selectedOptions = await page.$$eval("[data-test^=optionsPagePropertyCheckbox]", checkboxElements => {
-      const selectedCheckboxElements = checkboxElements.filter(({ checked }) => checked);
+    it("Default options should be selected", async () => {
+      const selectedOptions = await page.$$eval("[data-test^=optionsPagePropertyCheckbox]", checkboxElements => {
+        const selectedCheckboxElements = checkboxElements.filter(({ checked }) => checked);
 
       const selectedCheckboxNames = selectedCheckboxElements
         .map(({ dataset }) => dataset.test)
@@ -171,8 +171,38 @@ describe("Options page", () => {
       return selectedCheckboxNames;
     });
 
-    expect(selectedOptions).toEqual(["neighbourhoodName", "meanIncomePerResident"]);
-  });
+      expect(selectedOptions).toEqual(["neighbourhoodName", "meanIncomePerResident"]);
+    });
+
+    it("Options page has language selector", async () => {
+      const options = await page.$$eval(
+        "[data-test=languageSelect] option",
+        optionElements => optionElements.map(({ value }) => value)
+      );
+      expect(options).toEqual(["en", "nl"]);
+
+      const defaultLanguage = await page.evaluate(() =>
+        chrome.i18n.getUILanguage().startsWith("nl") ? "nl" : "en"
+      );
+
+      const otherLanguage = defaultLanguage === "en" ? "nl" : "en";
+      await Promise.all([
+        page.waitForNavigation(),
+        page.select("[data-test=languageSelect]", otherLanguage),
+      ]);
+
+      const labelText = await page.$eval(
+        "label[for='language-switch-select']",
+        el => el.textContent.trim()
+      );
+      const expectedText = otherLanguage === "nl" ? "Selecteer taal" : "Select language";
+      expect(labelText).toBe(expectedText);
+
+      await Promise.all([
+        page.waitForNavigation(),
+        page.select("[data-test=languageSelect]", defaultLanguage),
+      ]);
+    });
 
   it("User should see selected badges", async () => {
     // Un-select default "neighbourhood name" badge

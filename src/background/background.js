@@ -2,6 +2,7 @@ import { readUserSettings } from "../common/readUserSettings";
 import { fetchNeighbourhoodStats, fetchNeighbourhoodMeta, fetchAmenitiesExtras } from "./api";
 
 import { getProperties, selectDefaultProperties } from "./utils";
+import { applySelectedLanguage } from "../common/i18n";
 
 chrome.runtime.onInstalled.addListener(selectDefaultProperties);
 
@@ -42,6 +43,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     };
 
     const userSettings = await readUserSettings();
+    await applySelectedLanguage(userSettings.language);
     console.log("[FundaNeighbourhoods][bg] User settings", userSettings);
 
     const { badgeProperties, tableProperties, cardProperties } = getProperties(neighbourhoodWithMeta, userSettings);

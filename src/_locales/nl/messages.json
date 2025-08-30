@@ -11,6 +11,15 @@
   "selectBadges": {
     "message": "Selecteer badges die zichtbaar zijn bovenaan de optiespagina"
   },
+  "selectLanguage": {
+    "message": "Selecteer taal"
+  },
+  "english": {
+    "message": "Engels"
+  },
+  "dutch": {
+    "message": "Nederlands"
+  },
   "doNotShowInTable": {
     "message": ""
   },
