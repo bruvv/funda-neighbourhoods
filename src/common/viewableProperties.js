@@ -39,6 +39,126 @@ export const VIEWABLE_PROPERTIES = [
     },
   },
   {
+    name: "gpsInNeighbourhood",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["gpsInNeighbourhood"];
+      const v = obj && obj.value;
+      return typeof v === "number" ? `${v}` : chrome.i18n.getMessage("noInfo");
+    },
+  },
+  {
+    name: "avgDistanceToGps",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["avgDistanceToGps"];
+      const v = obj && obj.value;
+      if (typeof v !== "number" || !(isFinite(v))) return chrome.i18n.getMessage("noInfo");
+      if (v >= 1000) return `${(v / 1000).toFixed(1)} km`;
+      return `${v} m`;
+    },
+  },
+  {
+    name: "afterSchoolCareInNeighbourhood",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["afterSchoolCareInNeighbourhood"];
+      const v = obj && obj.value;
+      return typeof v === "number" ? `${v}` : chrome.i18n.getMessage("noInfo");
+    },
+  },
+  {
+    name: "avgDistanceToAfterSchoolCare",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["avgDistanceToAfterSchoolCare"];
+      const v = obj && obj.value;
+      if (typeof v !== "number" || !(isFinite(v))) return chrome.i18n.getMessage("noInfo");
+      if (v >= 1000) return `${(v / 1000).toFixed(1)} km`;
+      return `${v} m`;
+    },
+  },
+  {
+    name: "daycareInNeighbourhood",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["daycareInNeighbourhood"];
+      const v = obj && obj.value;
+      return typeof v === "number" ? `${v}` : chrome.i18n.getMessage("noInfo");
+    },
+  },
+  {
+    name: "avgDistanceToDaycare",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["avgDistanceToDaycare"];
+      const v = obj && obj.value;
+      if (typeof v !== "number" || !(isFinite(v))) return chrome.i18n.getMessage("noInfo");
+      if (v >= 1000) return `${(v / 1000).toFixed(1)} km`;
+      return `${v} m`;
+    },
+  },
+  {
+    name: "restaurantsInNeighbourhood",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["restaurantsInNeighbourhood"];
+      const v = obj && obj.value;
+      return typeof v === "number" ? `${v}` : chrome.i18n.getMessage("noInfo");
+    },
+  },
+  {
+    name: "avgDistanceToRestaurants",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["avgDistanceToRestaurants"];
+      const v = obj && obj.value;
+      if (typeof v !== "number" || !(isFinite(v))) return chrome.i18n.getMessage("noInfo");
+      if (v >= 1000) return `${(v / 1000).toFixed(1)} km`;
+      return `${v} m`;
+    },
+  },
+  {
+    name: "supermarketsInNeighbourhood",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["supermarketsInNeighbourhood"];
+      const v = obj && obj.value;
+      return typeof v === "number" ? `${v}` : chrome.i18n.getMessage("noInfo");
+    },
+  },
+  {
+    name: "avgDistanceToSupermarkets",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["avgDistanceToSupermarkets"];
+      const v = obj && obj.value;
+      if (typeof v !== "number" || !(isFinite(v))) return chrome.i18n.getMessage("noInfo");
+      if (v >= 1000) return `${(v / 1000).toFixed(1)} km`;
+      return `${v} m`;
+    },
+  },
+  {
+    name: "cafesInNeighbourhood",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["cafesInNeighbourhood"];
+      const v = obj && obj.value;
+      return typeof v === "number" ? `${v}` : chrome.i18n.getMessage("noInfo");
+    },
+  },
+  {
+    name: "avgDistanceToCafes",
+    group: "amenities",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["avgDistanceToCafes"];
+      const v = obj && obj.value;
+      if (typeof v !== "number" || !(isFinite(v))) return chrome.i18n.getMessage("noInfo");
+      if (v >= 1000) return `${(v / 1000).toFixed(1)} km`;
+      return `${v} m`;
+    },
+  },
+  {
     name: "municipalityName",
     group: "doNotShowInTable",
   },

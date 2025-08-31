@@ -35,6 +35,7 @@
 - Commits: imperative, concise message (e.g., `feat(content): add income bands`).
 - PRs: clear description, linked issues, before/after screenshots for UI changes, note any manifest/permission changes.
 - CI: ensure `npm test` passes locally; bump `package.json` version on main to trigger automated release.
+- Versioning: after every commit that changes the repository, increment `package.json` version by +1 (patch bump) and produce a fresh build (`npm run build`).
 
 ## Security & Configuration Tips
 - Node: use `.nvmrc` (`nvm use`) to match Node LTS Erbium (12.x).

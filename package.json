@@ -1,6 +1,6 @@
 {
   "name": "funda-chrome-extension",
-  "version": "0.7.28",
+  "version": "0.7.29",
   "main": "index.js",
   "license": "MIT",
   "scripts": {

@@ -347,12 +347,11 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return Math.round(R * c);
 }
 
-async function fetchAmenityStatsAround(centroid, amenity, diag = []) {
+async function fetchAmenityStatsAround(centroid, amenity, diag = [], radius = 3000) {
   const bases = [
     'https://overpass.kumi.systems/api/interpreter',
     'https://overpass-api.de/api/interpreter',
   ];
-  const radius = 3000; // meters (wider to increase hit-rate)
   // Include nodes, ways, relations; consider related amenities (kindergarten/college) for schools view
   const extra = amenity === 'school' ? `
     node["amenity"="kindergarten"](around:${radius},${centroid.lat},${centroid.lon});
@@ -410,11 +409,24 @@ export async function fetchAmenitiesExtras(neighbourhoodCode, diag = [], address
     centroid = await geocodeAddressCentroid(addressQuery, diag);
   }
   if (!centroid) { diag.push('[Amenities] no centroid'); return {}; }
-  const schools = await fetchAmenityStatsAround(centroid, 'school', diag);
-  const v = {
-    schoolsInNeighbourhood: { value: schools.count },
-    avgDistanceToSchools: { value: schools.avgDistance },
-  };
+
+  const amenityConfigs = [
+    { amenity: 'school', countKey: 'schoolsInNeighbourhood', distKey: 'avgDistanceToSchools' },
+    { amenity: 'doctors', countKey: 'gpsInNeighbourhood', distKey: 'avgDistanceToGps' },
+    { amenity: 'childcare', countKey: 'afterSchoolCareInNeighbourhood', distKey: 'avgDistanceToAfterSchoolCare' },
+    { amenity: 'kindergarten', countKey: 'daycareInNeighbourhood', distKey: 'avgDistanceToDaycare' },
+    { amenity: 'restaurant', countKey: 'restaurantsInNeighbourhood', distKey: 'avgDistanceToRestaurants' },
+    { amenity: 'supermarket', countKey: 'supermarketsInNeighbourhood', distKey: 'avgDistanceToSupermarkets' },
+    { amenity: 'cafe', countKey: 'cafesInNeighbourhood', distKey: 'avgDistanceToCafes' },
+  ];
+
+  const v = {};
+  for (const cfg of amenityConfigs) {
+    const stats = await fetchAmenityStatsAround(centroid, cfg.amenity, diag);
+    v[cfg.countKey] = { value: stats.count };
+    v[cfg.distKey] = { value: stats.avgDistance };
+  }
+
   await setInStorage(cacheKey, { t: nowMs(), v });
   return v;
 }
