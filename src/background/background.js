@@ -13,6 +13,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return;
   }
 
+  if (request.action === 'getLocaleMessages' && request.language) {
+    const url = chrome.runtime.getURL(`_locales/${request.language}/messages.json`);
+    fetch(url)
+      .then(r => (r && r.ok ? r.json() : Promise.reject(new Error(`status ${r && r.status}`))))
+      .then(json => sendResponse({ messages: json }))
+      .catch(err => {
+        console.warn('[FundaNeighbourhoods][bg] getLocaleMessages failed', err && err.message);
+        sendResponse({ error: err && err.message });
+      });
+    return true;
+  }
+
   const { zipCode, addressQuery, debug: debugRequested } = request;
   const diag = debugRequested ? [] : null;
 

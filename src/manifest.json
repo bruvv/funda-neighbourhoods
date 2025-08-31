@@ -38,6 +38,17 @@
     "128": "assets/icons/icon128.png"
   },
   "default_locale": "en",
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "_locales/*/messages.json"
+      ],
+      "matches": [
+        "https://www.funda.nl/*",
+        "file://*/*"
+      ]
+    }
+  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "{00758a4a-70d5-4319-a89b-3c9f92a5b751}"
