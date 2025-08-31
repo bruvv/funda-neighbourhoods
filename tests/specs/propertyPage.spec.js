@@ -181,14 +181,27 @@ describe("Options page", () => {
       );
       expect(options).toEqual(["en", "nl"]);
 
-      const selectedLanguage = await page.$eval(
-        "[data-test=languageSelect]",
-        selectElement => selectElement.value
-      );
       const defaultLanguage = await page.evaluate(() =>
         chrome.i18n.getUILanguage().startsWith("nl") ? "nl" : "en"
       );
-      expect(selectedLanguage).toBe(defaultLanguage);
+
+      const otherLanguage = defaultLanguage === "en" ? "nl" : "en";
+      await Promise.all([
+        page.waitForNavigation(),
+        page.select("[data-test=languageSelect]", otherLanguage),
+      ]);
+
+      const labelText = await page.$eval(
+        "label[for='language-switch-select']",
+        el => el.textContent.trim()
+      );
+      const expectedText = otherLanguage === "nl" ? "Selecteer taal" : "Select language";
+      expect(labelText).toBe(expectedText);
+
+      await Promise.all([
+        page.waitForNavigation(),
+        page.select("[data-test=languageSelect]", defaultLanguage),
+      ]);
     });
 
   it("User should see selected badges", async () => {

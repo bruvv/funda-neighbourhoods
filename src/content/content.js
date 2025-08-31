@@ -1,5 +1,6 @@
 import { wrapTableWithTitle, makeTableHtml } from "./table";
 import { makeBadgesHtml, makeSettingsButtonHtml } from "./badges";
+import { applySelectedLanguage } from "../common/i18n";
 
 // Try to initialize multiple times, since Funda pages can be hydrated dynamically.
 const MAX_TRIES = 30;
@@ -98,7 +99,10 @@ try {
 } catch (_) {}
 }
 
-init();
+(async () => {
+  await applySelectedLanguage();
+  init();
+})();
 
 function isEligiblePropertyDetailPage() {
   // Be permissive: accept detail pages (koop/huur) and classic koop slugs,

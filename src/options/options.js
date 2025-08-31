@@ -1,14 +1,14 @@
 import { readUserSettings } from "../common/readUserSettings";
 import { VIEWABLE_PROPERTIES } from "../common/viewableProperties";
 import { groupProperties } from "../common/utils";
+import { applySelectedLanguage } from "../common/i18n";
 
 initializePage();
 
 async function initializePage() {
   const userSettings = await readUserSettings();
 
-  const defaultLanguage = chrome.i18n.getUILanguage().startsWith("nl") ? "nl" : "en";
-  const selectedLanguage = userSettings.language || defaultLanguage;
+  const selectedLanguage = await applySelectedLanguage(userSettings.language);
 
   const headerHtml = makeHeaderHtml();
   const languageSwitchHtml = makeLanguageSwitchHtml(selectedLanguage);
@@ -117,7 +117,9 @@ function handleClicks(event) {
 }
 
 function handleLanguageChange(event) {
-  chrome.storage.sync.set({ language: event.target.value });
+  chrome.storage.sync.set({ language: event.target.value }, () => {
+    location.reload();
+  });
 }
 
 function makeSectionHeaderHtml(groupName) {
