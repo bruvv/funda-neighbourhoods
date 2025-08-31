@@ -258,30 +258,24 @@ export async function fetchNeighbourhoodStats(neighbourhoodCode, diag = null) {
   return merged;
 }
 
-// --- Extra data: PDOK WFS polygon -> centroid, Overpass amenities (schools) ---
-async function fetchBuurtCentroid(neighbourhoodCode, diag = []) {
-  // cache first
-  const cacheKey = `centroid:${neighbourhoodCode}`;
-  const cached = await getFromStorage(cacheKey);
-  if (cached && cached.t && (nowMs() - cached.t) < 7 * 24 * 60 * 60 * 1000) {
-    dbg('WFS centroid cache hit');
-    diag.push(`[WFS] centroid cache hit for ${neighbourhoodCode}`);
-    return cached.v;
-  }
-
-  // Try CBS buurt 2021 WFS layer
-  const url = `https://geodata.nationaalgeoregister.nl/wijkenbuurten2021/wfs?service=WFS&version=2.0.0&request=GetFeature&typeName=wijkenbuurten:buurt_2021&srsName=EPSG:4326&outputFormat=application/json&cql_filter=buurtcode='${encodeURIComponent(
-    neighbourhoodCode
-  )}'`;
   try {
-    dbg('WFS centroid request', url);
-    diag.push(`[WFS] request ${url}`);
-    const res = await fetchWithTimeout(url, { timeout: 5000 });
-    if (!res.ok) { diag.push(`[WFS] status ${res.status}`); return null; }
-    const gj = await res.json();
-    const feat = gj && gj.features && gj.features[0];
-    if (!feat || !feat.geometry) { diag.push('[WFS] no features'); return null; }
-    let centroid = geometryCentroid(feat.geometry);
+    const url = `${CBS_ODATA3_BASE}/${POLICE_DATASET_ID}/Perioden?$select=Key&$top=5000&$format=json`;
+    const res = await fetchWithTimeout(url, { timeout: 6000 });
+    if (!res.ok) { diag.push(`[Crime] periods status ${res.status}`); return []; }
+    const json = await res.json();
+    const keys = (json && json.value || []).map(r => r.Key).filter(Boolean);
+    if (!keys.length) return [];
+    const monthly = keys.filter(k => /MM\d{2}$/.test(k));
+    if (!monthly.length) return [];
+    monthly.sort();
+    const latest = monthly.slice(-count);
+    diag.push(`[Crime] picked periods ${latest.join(', ')}`);
+    return latest;
+  } catch (e) {
+    diag.push(`[Crime] periods error ${e && e.message}`);
+    return [];
+    const filter = `$filter=RegioS%20eq%20'${encodeURIComponent(neighbourhoodCode)}'%20and%20Perioden%20eq%20'${encodeURIComponent(k)}'`;
+    const filter = `$filter=RegioS%20eq%20'${encodeURIComponent(neighbourhoodCode)}'%20and%20Perioden%20eq%20'${encodeURIComponent(k)}'`;
     // If the numbers look like RD New (EPSG:28992), convert to WGS84
     if (centroid && (Math.abs(centroid.lon) > 180 || Math.abs(centroid.lat) > 90)) {
       diag.push('[WFS] centroid looked like RD; converted to WGS84');
@@ -653,8 +647,8 @@ function getFromStorage(key) {
   });
 }
 
-function setInStorage(key, value) {
-  return new Promise(resolve => {
+    const filter = `$filter=RegioS%20eq%20'${encodeURIComponent(neighbourhoodCode)}'%20and%20SoortMisdrijf%20eq%20'${smKey}'%20and%20Perioden%20eq%20'${encodeURIComponent(periodKey)}'`;
+    const filter = `$filter=RegioS%20eq%20'${encodeURIComponent(neighbourhoodCode)}'%20and%20Perioden%20eq%20'${encodeURIComponent(periodKey)}'`;
     try { chrome.storage && chrome.storage.local && chrome.storage.local.set({ [key]: value }, () => resolve()); }
     catch (e) { resolve(); }
   });
