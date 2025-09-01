@@ -16,6 +16,7 @@ let observerRef = null;
 let isApplyingDom = false;
 let ensureTimer = null;
 let lastRenderedProperties = [];
+let lastCrimeData = null;
 let pendingRender = null;
 // no placeholder injection
 
@@ -46,7 +47,7 @@ function init() {
   // Removed loading bar (was flaky on dynamic pages)
   console.log("Funda Neighbourhoods extension:", { zipCode, addressQuery });
   const debugMode = location.hash.includes('fn-debug');
-  chrome.runtime.sendMessage({ zipCode, addressQuery, debug: debugMode }, ({ badgeProperties, tableProperties, cardProperties, error, debugInfo }) => {
+  chrome.runtime.sendMessage({ zipCode, addressQuery, debug: debugMode }, ({ badgeProperties, tableProperties, cardProperties, crimeData, error, debugInfo }) => {
     console.log({ badgeProperties, tableProperties, cardProperties });
     console.log("[FundaNeighbourhoods][content] Response from background", { hasError: !!error });
     if (debugMode && debugInfo) {
@@ -77,6 +78,7 @@ function init() {
     }
     // no loading bar
 
+    lastCrimeData = crimeData || null;
     subscribeToBadgeClicks();
   });
 
@@ -89,6 +91,13 @@ try {
       if (props.length) {
         if (!anchorsReady()) { pendingRender = { tableProperties: props, error: false }; startObserverOnce(); }
         else { addNeighbourhoodCard({ tableProperties: props, error: false }); }
+      }
+      if (msg.crimeData) {
+        lastCrimeData = msg.crimeData;
+        try {
+          const container = document.getElementById('funda-neighbourhoods-crime-canvas');
+          if (container && container.style.display !== 'none') renderCrimeGraphs(container, lastCrimeData);
+        } catch (_) {}
       }
       const debugMode = location.hash.includes('fn-debug');
       if (debugMode && msg.debugInfo) {
@@ -267,6 +276,7 @@ function addNeighbourhoodCard({ tableProperties, badgeProperties = [], error }) 
 
   lastRenderedProperties = tableProperties || [];
 
+  const crimeToggleText = 'Criminaliteit (vorig jaar) — klik om grafiek te tonen';
   const innerHtml = `
     <div class="funda-neighbourhoods-card__header">
       <h2 class="funda-neighbourhoods-card__title">${title}</h2>
@@ -276,6 +286,14 @@ function addNeighbourhoodCard({ tableProperties, badgeProperties = [], error }) 
     <div class="funda-neighbourhoods-graph">
       <span class="funda-neighbourhoods-graph-toggle" data-fn-action="toggleGraph">${chrome.i18n.getMessage('amenities')}: ${chrome.i18n.getMessage('avgDistanceToSchools')} — klik om grafiek te tonen</span>
       <div id="funda-neighbourhoods-graph-canvas" style="display:none"></div>
+    </div>
+    <div class="funda-neighbourhoods-graph">
+      <span class="funda-neighbourhoods-graph-toggle" data-fn-action="toggleCrime">${crimeToggleText}</span>
+      <div id="funda-neighbourhoods-crime-canvas" style="display:none">
+        <div id="funda-neighbourhoods-crime-monthly"></div>
+        <div id="funda-neighbourhoods-crime-types" style="margin-top:12px"></div>
+        <div id="funda-neighbourhoods-crime-types-list" style="margin-top:8px;color:#374151"></div>
+      </div>
     </div>
   `;
 
@@ -299,6 +317,7 @@ function addNeighbourhoodCard({ tableProperties, badgeProperties = [], error }) 
   // Keep observer running to survive re-renders
   startObserverOnce();
   wireGraphToggle();
+  wireCrimeToggle();
 }
 
 // placeholder removed
@@ -411,6 +430,18 @@ function wireGraphToggle() {
   }, { once: false });
 }
 
+function wireCrimeToggle() {
+  const container = document.getElementById('funda-neighbourhoods-crime-canvas');
+  const toggle = document.querySelector('[data-fn-action="toggleCrime"]');
+  if (!container || !toggle) return;
+  toggle.addEventListener('click', () => {
+    const visible = container.style.display !== 'none';
+    if (visible) { container.style.display = 'none'; return; }
+    container.style.display = 'block';
+    renderCrimeGraphs(container, lastCrimeData);
+  }, { once: false });
+}
+
 function renderGraph(container, properties) {
   // Build dataset from any amenities avg distance properties
   const items = properties
@@ -442,6 +473,70 @@ function renderGraph(container, properties) {
   }).join('');
 
   container.innerHTML = `<svg width="100%" viewBox="0 0 ${width} ${height}" role="img" aria-label="Amenities distances">${bars}</svg>`;
+}
+
+function renderCrimeGraphs(container, crimeData) {
+  if (!crimeData) {
+    container.innerHTML = `<div style="color:#6b7280">${chrome.i18n.getMessage('noInfo') || 'No info'}</div>`;
+    return;
+  }
+  try {
+    const width = container.clientWidth || 640;
+    const monthly = Array.isArray(crimeData.monthly) ? crimeData.monthly : [];
+    const byType = Array.isArray(crimeData.byType) ? crimeData.byType : [];
+    const yearLabel = crimeData.year ? ` — ${crimeData.year}` : '';
+
+    // Monthly line chart
+    const mMax = monthly.length ? Math.max(...monthly.map(m => m.total)) : 0;
+    const mH = 180, mPad = { l: 40, r: 10, t: 20, b: 24 };
+    const mW = width;
+    const mPlotW = mW - mPad.l - mPad.r;
+    const mPlotH = mH - mPad.t - mPad.b;
+    const mx = i => mPad.l + (mPlotW * (i / Math.max(1, monthly.length - 1)));
+    const my = v => mPad.t + (mMax > 0 ? (mPlotH - (v / mMax) * mPlotH) : mPlotH);
+    let poly = '';
+    monthly.forEach((row, i) => { poly += `${mx(i)},${my(row.total)} `; });
+    const points = monthly.map((row, i) => `<circle cx="${mx(i)}" cy="${my(row.total)}" r="3" fill="#3b82f6"/>` +
+      `<text x="${mx(i) + 6}" y="${my(row.total) - 6}" font-size="10" fill="#111827">${row.total}</text>`).join('');
+    const mLabels = monthly.map((row, i) => `<text x="${mx(i)}" y="${mH - 6}" font-size="10" fill="#4b5563" text-anchor="middle">${escapeXml(row.period)}</text>`).join('');
+    const monthlySvg = `<svg width="100%" viewBox="0 0 ${mW} ${mH}" role="img">
+      <polyline fill="none" stroke="#3b82f6" stroke-width="2" points="${poly.trim()}" />
+      ${points}
+      ${mLabels}
+      <text x="${mPad.l}" y="12" font-size="12" fill="#111827">Totale misdrijven per maand${yearLabel}</text>
+    </svg>`;
+
+    // By-type bar chart
+    const topTypes = byType.slice(0, 12); // avoid huge list
+    const tMax = topTypes.length ? Math.max(...topTypes.map(t => t.total)) : 0;
+    const tBarH = 16, tGap = 10, tPad = { l: 140, r: 20, t: 20, b: 20 };
+    const tH = tPad.t + tPad.b + topTypes.length * (tBarH + tGap) - tGap;
+    const tW = width;
+    const tScale = v => (tW - tPad.l - tPad.r) * (tMax > 0 ? v / tMax : 0);
+    const tBars = topTypes.map((t, idx) => {
+      const y = tPad.t + idx * (tBarH + tGap);
+      const w = Math.max(2, Math.round(tScale(t.total)));
+      const label = (t.label || t.key).replace(/_/g, ' ');
+      return `<g>
+        <text x="0" y="${y + tBarH - 3}" fill="#4b5563" font-size="12">${escapeXml(label)}</text>
+        <rect x="${tPad.l}" y="${y}" width="${w}" height="${tBarH}" fill="#10b981" rx="3"/>
+        <text x="${tPad.l + w + 6}" y="${y + tBarH - 3}" fill="#111827" font-size="12">${t.total}</text>
+      </g>`;
+    }).join('');
+    const typesSvg = `<svg width="100%" viewBox="0 0 ${tW} ${tH}" role="img">${tBars}</svg>`;
+
+    // Text list of crime types
+    const list = byType.map(t => `${escapeXml(t.label || t.key)}: ${t.total}`).join(' • ');
+
+    const mEl = container.querySelector('#funda-neighbourhoods-crime-monthly');
+    const tEl = container.querySelector('#funda-neighbourhoods-crime-types');
+    const listEl = container.querySelector('#funda-neighbourhoods-crime-types-list');
+    if (mEl) mEl.innerHTML = monthlySvg;
+    if (tEl) tEl.innerHTML = typesSvg;
+    if (listEl) listEl.textContent = list;
+  } catch (e) {
+    container.innerHTML = `<div style="color:#b91c1c">${escapeXml(e && e.message || 'Failed to render crime graphs')}</div>`;
+  }
 }
 
 function getTextValue(p) {

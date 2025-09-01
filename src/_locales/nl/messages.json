@@ -302,4 +302,6 @@
   ,
   "safety": { "message": "Veiligheid" },
   "crimeScore": { "message": "Crimescore (hoger is veiliger)" }
+  ,
+  "wozValue": { "message": "Gemiddelde WOZ-waarde" }
 }

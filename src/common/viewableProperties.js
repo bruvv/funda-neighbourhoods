@@ -7,6 +7,20 @@ export const VIEWABLE_PROPERTIES = [
     name: "neighbourhoodName",
     group: "doNotShowInTable",
   },
+  // --- Property value (WOZ) ---
+  {
+    name: "wozValue",
+    group: "income",
+    apiField: "GemiddeldeWOZWaardeVanWoningen",
+    valueFormat: (apiField, properties) => {
+      const obj = properties[apiField];
+      const v = obj && obj.value;
+      if (typeof v !== 'number' || !isFinite(v)) return chrome.i18n.getMessage("noInfo");
+      // WOZ is in thousands of euros
+      const euros = Math.round(v * 1000);
+      return formatMoney(euros);
+    },
+  },
   // --- Safety ---
   {
     name: "crimeScore",
@@ -15,6 +29,15 @@ export const VIEWABLE_PROPERTIES = [
       const obj = properties["crimeScore"];
       const v = obj && obj.value;
       return typeof v === "number" ? `${Math.max(0, Math.min(100, Math.round(v)))}/100` : chrome.i18n.getMessage("noInfo");
+    },
+  },
+  {
+    name: "crimeTypesText",
+    group: "safety",
+    valueFormat: (apiField, properties) => {
+      const obj = properties["crimeTypesText"];
+      const v = obj && obj.value;
+      return v || chrome.i18n.getMessage("noInfo");
     },
   },
   // --- Amenities (OSM/Overpass) ---

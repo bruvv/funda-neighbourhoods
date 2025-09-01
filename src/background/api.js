@@ -258,6 +258,168 @@ export async function fetchNeighbourhoodStats(neighbourhoodCode, diag = null) {
   return merged;
 }
 
+// --- Crime charts data (last 6 months: monthly totals + totals by type) ---
+export async function fetchCrimeCharts(neighbourhoodCode, diag = []) {
+  try {
+    const now = new Date();
+    const targetYear = now.getFullYear() - 1; // previous full year
+    const yearKeys = await getMonthlyPeriodKeysForYear(targetYear, diag);
+    if (!yearKeys || !yearKeys.length) return {};
+
+    // Monthly totals for the whole year
+    const monthly = await fetchCrimeTotalsByMonth(neighbourhoodCode, yearKeys, diag);
+
+    // By type aggregated over the same period
+    const byType = await fetchCrimeTypesAggregate(neighbourhoodCode, yearKeys, diag);
+
+    return { monthly, byType, year: targetYear };
+  } catch (e) {
+    dbg('Crime charts error', e && e.message);
+    return {};
+  }
+}
+
+async function getRecentCrimePeriodKeys(count = 6, diag = []) {
+  // Collect monthly period keys across recent years and pick latest N
+  const y0 = new Date().getFullYear();
+  const keys = [];
+  for (let y = y0; y >= y0 - 4; y--) {
+    try {
+      const url = `${CBS_ODATA3_BASE}/${POLICE_DATASET_ID}/Perioden?$select=Key&$filter=substring(Key,0,4)%20eq%20'${y}'&$format=json`;
+      const res = await fetchWithTimeout(url, { timeout: 6000 });
+      if (!res.ok) { diag.push(`[Crime] periods ${y} status ${res.status}`); continue; }
+      const json = await res.json();
+      const ks = (json && json.value || []).map(r => r.Key).filter(Boolean);
+      keys.push(...ks);
+    } catch (e) {
+      diag.push(`[Crime] periods error ${y} ${e && e.message}`);
+    }
+  }
+  if (!keys.length) return [];
+  // Keep only monthly keys like 'YYYYMM06'
+  const monthly = keys.filter(k => /MM\d{2}$/.test(k));
+  if (!monthly.length) return [];
+  monthly.sort();
+  const latest = monthly.slice(-count);
+  diag.push(`[Crime] picked periods ${latest.join(', ')}`);
+  return latest;
+}
+
+async function getMonthlyPeriodKeysForYear(year, diag = []) {
+  try {
+    const url = `${CBS_ODATA3_BASE}/${POLICE_DATASET_ID}/Perioden?$select=Key&$filter=substring(Key,0,4)%20eq%20'${year}'&$top=100&$format=json`;
+    const res = await fetchWithTimeout(url, { timeout: 7000 });
+    if (!res.ok) { diag.push(`[Crime] year periods ${year} status ${res.status}`); return []; }
+    const json = await res.json();
+    const keys = (json && json.value || []).map(r => r.Key).filter(Boolean);
+    const monthly = keys.filter(k => /MM\d{2}$/.test(k)).map(k => k.trim());
+    monthly.sort();
+    if (monthly.length) diag.push(`[Crime] periods for ${year}: ${monthly[0]}..${monthly[monthly.length-1]} (${monthly.length})`);
+    return monthly;
+  } catch (e) {
+    diag.push(`[Crime] year periods error ${year} ${e && e.message}`);
+    return [];
+  }
+}
+
+async function fetchCrimeTotalsByMonth(neighbourhoodCode, periodKeys, diag = []) {
+  const tasks = periodKeys.map(async k => {
+    const pk = (k || '').trim();
+    // Fetch all rows for a period and sum non-total categories (fallback if no explicit total row)
+    const filter = `$filter=WijkenEnBuurten%20eq%20'${encodeURIComponent(neighbourhoodCode)}'%20and%20Perioden%20eq%20'${encodeURIComponent(pk)}'`;
+    // Only select fields that actually exist on TypedDataSet to avoid 500s
+    const select = `$select=SoortMisdrijf,GeregistreerdeMisdrijven_1`;
+    const url = `${CBS_ODATA3_BASE}/${POLICE_DATASET_ID}/TypedDataSet?${filter}&${select}&$top=500&$format=json`;
+    try {
+      const res = await fetchWithTimeout(url, { timeout: 7000 });
+      if (!res.ok) return { period: toPeriodLabel(pk), key: pk, total: 0 };
+      const json = await res.json();
+      const rows = (json && json.value) || [];
+      let total = null;
+      const totalRow = rows.find(r => r && ((r.SoortMisdrijf || '').trim() === '0' || (r.SoortMisdrijf || '').trim() === '0.0.0' || (r.SoortMisdrijf || '').trim() === '00' || (r.SoortMisdrijf || '').trim() === '000'));
+      if (totalRow && typeof totalRow.GeregistreerdeMisdrijven_1 === 'number') {
+        total = totalRow.GeregistreerdeMisdrijven_1;
+      } else {
+        total = rows.reduce((acc, r) => {
+          const code = (r.SoortMisdrijf || '').trim();
+          if (code === '0' || code === '0.0.0' || code === '00' || code === '000') return acc;
+          const n = typeof r.GeregistreerdeMisdrijven_1 === 'number' ? r.GeregistreerdeMisdrijven_1 : 0;
+          return acc + n;
+        }, 0);
+      }
+      return { period: toPeriodLabel(pk), key: pk, total: typeof total === 'number' ? total : 0 };
+    } catch (e) {
+      diag.push(`[Crime] monthly error ${pk} ${e && e.message}`);
+      return { period: toPeriodLabel(pk), key: pk, total: 0 };
+    }
+  });
+  const rows = (await Promise.all(tasks)).filter(Boolean);
+  // Preserve chronological order (ascending by original keys)
+  const ordered = periodKeys.map(k => rows.find(r => r && r.key === k)).filter(Boolean);
+  return ordered;
+}
+
+async function fetchCrimeTypesAggregate(neighbourhoodCode, periodKeys, diag = []) {
+  const acc = new Map(); // key => { key, label, total }
+  for (const k0 of periodKeys) {
+    const k = (k0 || '').trim();
+    const filter = `$filter=WijkenEnBuurten%20eq%20'${encodeURIComponent(neighbourhoodCode)}'%20and%20Perioden%20eq%20'${encodeURIComponent(k)}'`;
+    const select = `$select=SoortMisdrijf,GeregistreerdeMisdrijven_1`;
+    const url = `${CBS_ODATA3_BASE}/${POLICE_DATASET_ID}/TypedDataSet?${filter}&${select}&$top=500&$format=json`;
+    try {
+      const res = await fetchWithTimeout(url, { timeout: 7000 });
+      if (!res.ok) { diag.push(`[Crime] byType status ${res.status}`); continue; }
+      const json = await res.json();
+      const items = (json && json.value) || [];
+      for (const row of items) {
+        const raw = row.SoortMisdrijf || row.soortMisdrijf || row["SoortMisdrijf"];
+        const code = (raw || '').trim();
+        if (!code || code === '0.0.0' || code === '0' || code === '00' || code === '000') continue; // skip total row
+        const n = typeof row.GeregistreerdeMisdrijven_1 === 'number' ? row.GeregistreerdeMisdrijven_1 : 0;
+        const prev = acc.get(code) || { key: code, label: '', total: 0 };
+        prev.total += n;
+        acc.set(code, prev);
+      }
+    } catch (e) {
+      diag.push(`[Crime] byType error ${k} ${e && e.message}`);
+    }
+  }
+  // Attach labels from SoortMisdrijf dimension (map Key->Title)
+  const dict = await fetchCrimeTypeDict(diag);
+  for (const v of acc.values()) {
+    const label = dict[v.key] || v.key;
+    v.label = label.replace(/^\d+\.\d+\.\d+\s*/, '').trim();
+  }
+  const arr = Array.from(acc.values());
+  arr.sort((a, b) => b.total - a.total);
+  return arr;
+}
+
+async function fetchCrimeTypeDict(diag = []) {
+  const cacheKey = 'crimeTypeTitles:v1';
+  const cache = await getFromStorage(cacheKey);
+  if (cache && cache.t && (nowMs() - cache.t) < 30 * 24 * 60 * 60 * 1000) {
+    return cache.v || {};
+  }
+  try {
+    const url = `${CBS_ODATA3_BASE}/${POLICE_DATASET_ID}/SoortMisdrijf?$select=Key,Title&$top=1000&$format=json`;
+    const res = await fetchWithTimeout(url, { timeout: 7000 });
+    if (!res.ok) return {};
+    const json = await res.json();
+    const dict = {};
+    for (const row of (json && json.value) || []) {
+      const key = (row.Key || '').trim();
+      const title = (row.Title || '').trim();
+      if (key) dict[key] = title || key;
+    }
+    await setInStorage(cacheKey, { t: nowMs(), v: dict });
+    return dict;
+  } catch (e) {
+    diag.push(`[Crime] dict error ${e && e.message}`);
+    return {};
+  }
+}
+
 // --- Extra data: PDOK WFS polygon -> centroid, Overpass amenities (schools) ---
 async function fetchBuurtCentroid(neighbourhoodCode, diag = []) {
   // cache first
@@ -563,24 +725,42 @@ async function getLatestCrimePeriodKey(diag = undefined) {
 }
 
 async function fetchLatestCrimeTotalForBuurt(neighbourhoodCode, periodKey, diag = undefined) {
-  // Total misdrijven key in SoortMisdrijf dimension is '0.0.0'
-  const smKey = encodeURIComponent("0.0.0");
-  const filter = `$filter=WijkenEnBuurten%20eq%20'${encodeURIComponent(neighbourhoodCode)}'%20and%20SoortMisdrijf%20eq%20'${smKey}'%20and%20Perioden%20eq%20'${encodeURIComponent(periodKey)}'`;
-  const select = `$select=GeregistreerdeMisdrijven_1`;
-  const url = `${CBS_ODATA3_BASE}/${POLICE_DATASET_ID}/TypedDataSet?${filter}&${select}&$top=1&$format=json`;
+  // Try direct total keys; fallback to summing categories
+  const tryKeys = ["0.0.0", "0", "00", "000"];
+  for (const k of tryKeys) {
+    const smKey = encodeURIComponent(k);
+    const filter = `$filter=WijkenEnBuurten%20eq%20'${encodeURIComponent(neighbourhoodCode)}'%20and%20SoortMisdrijf%20eq%20'${smKey}'%20and%20Perioden%20eq%20'${encodeURIComponent(periodKey)}'`;
+    const select = `$select=GeregistreerdeMisdrijven_1`;
+    const url = `${CBS_ODATA3_BASE}/${POLICE_DATASET_ID}/TypedDataSet?${filter}&${select}&$top=1&$format=json`;
+    try {
+      const res = await fetchWithTimeout(url, { timeout: 6000 });
+      if (!res.ok) continue;
+      const json = await res.json();
+      const v0 = json && json.value && json.value[0];
+      const n = v0 && (typeof v0.GeregistreerdeMisdrijven_1 === 'number' ? v0.GeregistreerdeMisdrijven_1 : null);
+      if (typeof n === 'number') { if (diag) diag.push(`[Crime] total(${k}) ${n}`); return n; }
+    } catch (_) { /* try next */ }
+  }
   try {
-    dbg('Crime fetch URL', url);
-    const res = await fetchWithTimeout(url, { timeout: 6000 });
-    if (!res.ok) { if (diag) diag.push(`[Crime] data status ${res.status}`); return null; }
+    const filter = `$filter=WijkenEnBuurten%20eq%20'${encodeURIComponent(neighbourhoodCode)}'%20and%20Perioden%20eq%20'${encodeURIComponent(periodKey)}'`;
+    const select = `$select=SoortMisdrijf,SoortMisdrijfOmschrijving,GeregistreerdeMisdrijven_1`;
+    const url = `${CBS_ODATA3_BASE}/${POLICE_DATASET_ID}/TypedDataSet?${filter}&${select}&$top=500&$format=json`;
+    const res = await fetchWithTimeout(url, { timeout: 7000 });
+    if (!res.ok) return null;
     const json = await res.json();
-    const v0 = json && json.value && json.value[0];
-    const n = v0 && (typeof v0.GeregistreerdeMisdrijven_1 === 'number' ? v0.GeregistreerdeMisdrijven_1 : null);
-    if (diag) diag.push(`[Crime] total ${n}`);
-    dbg('Crime total', n);
-    return typeof n === 'number' ? n : null;
+    const rows = (json && json.value) || [];
+    let total = 0;
+    for (const r of rows) {
+      const code = r.SoortMisdrijf;
+      const descr = r.SoortMisdrijfOmschrijving || '';
+      if (code === '0' || code === '0.0.0' || /totaal/i.test(descr)) continue;
+      const n = typeof r.GeregistreerdeMisdrijven_1 === 'number' ? r.GeregistreerdeMisdrijven_1 : 0;
+      total += n;
+    }
+    if (diag) diag.push(`[Crime] total(sum) ${total}`);
+    return total;
   } catch (e) {
-    if (diag) diag.push(`[Crime] data error ${e && e.message}`);
-    dbg('Crime data error', e && e.message);
+    if (diag) diag.push(`[Crime] data error sum ${e && e.message}`);
     return null;
   }
 }
@@ -601,12 +781,16 @@ function computeCrimeScoreFromMonthly(perThousand, rawTotal) {
 }
 
 function toPeriodLabel(periodKey) {
-  // Convert 'YYYYMMXX' to 'YYYY-MM' (month), ignore XX suffix
-  if (!periodKey || typeof periodKey !== 'string' || periodKey.length < 6) return periodKey;
+  // Accept keys like 'YYYYMM06', 'YYYYMM12'. Output 'YYYY-06'.
+  if (!periodKey || typeof periodKey !== 'string') return periodKey;
   const y = periodKey.slice(0, 4);
-  const m = periodKey.slice(4, 6).replace(/^MM/, '');
-  const mm = /^\d+$/.test(m) ? m : periodKey.slice(4, 6);
-  return `${y}-${mm}`;
+  const mMatch = periodKey.match(/MM(\d{2})/);
+  if (mMatch) return `${y}-${mMatch[1]}`;
+  // Fallback: attempt naive slice
+  if (periodKey.length >= 6 && /^\d{2}$/.test(periodKey.slice(4, 6))) {
+    return `${y}-${periodKey.slice(4, 6)}`;
+  }
+  return periodKey;
 }
 
 // Historical indicators (2016–2018) fallback computation
