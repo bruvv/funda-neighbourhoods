@@ -292,7 +292,6 @@ function addNeighbourhoodCard({ tableProperties, badgeProperties = [], error }) 
       <div id="funda-neighbourhoods-crime-canvas" style="display:none">
         <div id="funda-neighbourhoods-crime-monthly"></div>
         <div id="funda-neighbourhoods-crime-types" style="margin-top:12px"></div>
-        <div id="funda-neighbourhoods-crime-types-list" style="margin-top:8px;color:#374151"></div>
       </div>
     </div>
   `;
@@ -526,14 +525,10 @@ function renderCrimeGraphs(container, crimeData) {
     const typesSvg = `<svg width="100%" viewBox="0 0 ${tW} ${tH}" role="img">${tBars}</svg>`;
 
     // Text list of crime types
-    const list = byType.map(t => `${escapeXml(t.label || t.key)}: ${t.total}`).join(' • ');
-
     const mEl = container.querySelector('#funda-neighbourhoods-crime-monthly');
     const tEl = container.querySelector('#funda-neighbourhoods-crime-types');
-    const listEl = container.querySelector('#funda-neighbourhoods-crime-types-list');
     if (mEl) mEl.innerHTML = monthlySvg;
     if (tEl) tEl.innerHTML = typesSvg;
-    if (listEl) listEl.textContent = list;
   } catch (e) {
     container.innerHTML = `<div style="color:#b91c1c">${escapeXml(e && e.message || 'Failed to render crime graphs')}</div>`;
   }

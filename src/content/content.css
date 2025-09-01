@@ -102,6 +102,17 @@ li[class*="label-"] + .funda-neighbourhoods-badge {
   text-align: right;
 }
 
+/* Make long textual rows look good (multi-line, left aligned) */
+.funda-neighbourhoods-card dd[data-test="propertyRowValue-crimeTypesText"] {
+  grid-column: 1 / -1;
+  text-align: left;
+  font-weight: 400;
+  color: #374151; /* gray-700 */
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
 .funda-neighbourhoods-card .object-kenmerken-list-header {
   grid-column: 1 / -1;
   margin: 12px 0 4px 0;

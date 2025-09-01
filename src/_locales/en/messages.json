@@ -303,5 +303,7 @@
   "safety": { "message": "Safety" },
   "crimeScore": { "message": "Crime score (higher is safer)" }
   ,
+  "crimeTypesText": { "message": "Crime types (text)" }
+  ,
   "wozValue": { "message": "Average WOZ value" }
 }
